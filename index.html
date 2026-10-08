@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mokora</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;font-family:system-ui,sans-serif;background:#0b0d10;color:#f2f5f7}body{overflow:hidden}
+#app{border:0;width:100%;height:100%;display:block;background:#fff}
+#boot{position:fixed;inset:0;display:grid;place-items:center;background:#0b0d10;z-index:10}.bootbox{padding:24px;border:1px solid #29313a;border-radius:14px;background:#12161b;text-align:center}
+#overlay{position:fixed;inset:0;display:none;place-items:center;background:rgba(0,0,0,.72);backdrop-filter:blur(8px);z-index:50;padding:18px;overflow:auto}#overlay.show{display:grid}
+.card{width:min(440px,100%);padding:26px;border:1px solid #29313a;border-radius:16px;background:#12161b;box-shadow:0 18px 70px #0008}
+.muted,.hint{color:#9ba7b3}.hint{font-size:12px}label{display:block;margin:16px 0 7px;font-weight:600}
+input{width:100%;padding:11px 12px;border:1px solid #29313a;border-radius:9px;background:#0d1116;color:#f2f5f7;font:inherit}
+button{padding:11px 15px;border:0;border-radius:9px;background:#7dd3fc;color:#061018;font-weight:700;cursor:pointer}button.secondary{background:#202831;color:#f2f5f7}
+.actions{display:flex;gap:9px;margin-top:16px}.msg{min-height:22px;margin-top:10px}.err{color:#ff7b7b}.close{float:right;background:transparent;color:#9ba7b3;padding:3px 8px;font-size:20px}.mode{display:none}.mode.active{display:block}
+</style><script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script></head><body>
+<div id="boot"><div class="bootbox"><strong>Mokora</strong><div class="muted" id="bootText">Connecting...</div></div></div>
+<iframe id="app" title="Mokora application"></iframe>
+<div id="overlay" aria-hidden="true"><div class="card">
+<button class="close" id="close">×</button>
+<div id="login" class="mode active"><h2>Sign in</h2><div class="muted">Mokora account</div>
+<form id="loginForm"><label>Username</label><input name="username" autocomplete="username" required>
+<label>Password</label><input type="password" name="password" autocomplete="current-password" required>
+<div class="cf-turnstile" data-sitekey="0x4AAAAAAFNIzz8QhbBPRZ6E" data-theme="auto"></div>
+<div class="actions"><button>Sign in</button><button type="button" class="secondary" id="toRegister">Create account</button></div><div id="loginMsg" class="msg"></div></form></div>
+<div id="register" class="mode"><h2>Create account</h2><div class="muted">Create a Mokora account</div>
+<form id="registerForm"><label>Username <span class="hint">3-16 letters, numbers, _</span></label><input name="username" required>
+<label>Name <span class="hint">In-game name</span></label><input name="name" required>
+<label>Password <span class="hint">6+ characters</span></label><input type="password" name="password" required>
+<div class="cf-turnstile" data-sitekey="0x4AAAAAAFNIzz8QhbBPRZ6E" data-theme="auto"></div>
+<div class="actions"><button>Create account</button><button type="button" class="secondary" id="toLogin">Sign in</button></div><div id="registerMsg" class="msg"></div></form></div>
+</div></div><script>
+const URL_MANIFEST='https://raw.githubusercontent.com/ztao35000-rgb/Mokora-URL/main/URL.txt';
+let API='';
+const $=id=>document.getElementById(id);
+function setMsg(el,t,bad=false){el.textContent=t;el.className='msg'+(bad?' err':'')}
+function openOverlay(mode){$('overlay').classList.add('show');$('overlay').setAttribute('aria-hidden','false');$('login').classList.toggle('active',mode==='login');$('register').classList.toggle('active',mode==='register')}
+function closeOverlay(){$('overlay').classList.remove('show');$('overlay').setAttribute('aria-hidden','true')}
+function turnstileToken(form){const x=form.querySelector('[name="cf-turnstile-response"]');return x&&x.value||''}
+async function establishSession(token){
+ const r=await fetch(API+'/api/eagler/web-session',{method:'POST',headers:{Authorization:'Bearer '+token},credentials:'include'});
+ if(!r.ok)throw new Error('Could not establish web session');return r.json()
+}
+async function login(e){
+ e.preventDefault();const f=e.currentTarget,m=$('loginMsg');setMsg(m,'Signing in...');
+ const d=Object.fromEntries(new FormData(f));d['cf-turnstile-response']=turnstileToken(f);d.eagler=true;
+ try{const r=await fetch(API+'/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});
+ const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.errorMessage||'Login failed');
+ if(!j.token)throw new Error('No session token returned');await establishSession(j.token);closeOverlay();$('app').src=API+'/account'}
+ catch(x){setMsg(m,x.message,true)}
+}
+async function register(e){
+ e.preventDefault();const f=e.currentTarget,m=$('registerMsg');setMsg(m,'Creating account...');
+ const d=Object.fromEntries(new FormData(f));d['cf-turnstile-response']=turnstileToken(f);d.eagler=true;
+ try{const r=await fetch(API+'/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});
+ const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.errorMessage||'Registration failed');
+ $('loginForm').username.value=d.username;setMsg(m,'Account created. Please sign in.');openOverlay('login')}
+ catch(x){setMsg(m,x.message,true)}
+}
+window.addEventListener('message',e=>{if(!API||e.origin!==API)return;const t=e.data&&e.data.type;if(t==='mokora-open-login')openOverlay('login');if(t==='mokora-open-register')openOverlay('register')});
+$('loginForm').addEventListener('submit',login);$('registerForm').addEventListener('submit',register);
+$('toRegister').onclick=()=>openOverlay('register');$('toLogin').onclick=()=>openOverlay('login');$('close').onclick=closeOverlay;
+(async()=>{try{const r=await fetch(URL_MANIFEST,{cache:'no-store'});if(!r.ok)throw new Error('URL.txt unavailable');API=(await r.text()).trim().replace(/\/$/,'');if(!/^https:\/\//.test(API))throw new Error('Invalid Mokora URL');$('app').src=API+'/';$('boot').style.display='none'}catch(e){$('bootText').textContent=e.message}})();
+</script></body></html>
